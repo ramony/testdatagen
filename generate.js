@@ -55,7 +55,7 @@ async function main(table) {
     fields.map(f => {
       configData[f.Field] = createInitFunction(f.Field, f.Type);
     })
-    fs.mkdirSync(path.join(__dirname, "config"));
+    fs.mkdirSync(path.join(__dirname, "config"), { recursive: true });
     fs.writeFileSync(tableConfigFile, JSON.stringify(configData, '', '  '), 'utf8');
   } else {
     let configData = JSON.parse(fs.readFileSync(tableConfigFile, 'utf8'));
