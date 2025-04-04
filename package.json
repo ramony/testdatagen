@@ -1,0 +1,23 @@
+{
+  "name": "test_data_generator",
+  "version": "1.0.0",
+  "description": "generate test data for database",
+  "main": "generate.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramony/testdatagen.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/ramony/testdatagen/issues"
+  },
+  "homepage": "https://github.com/ramony/testdatagen#readme",
+  "dependencies": {
+    "mysql2": "^3.14.0"
+  }
+}
