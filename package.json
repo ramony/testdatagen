@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "generate test data for database",
   "main": "generate.js",
+  "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

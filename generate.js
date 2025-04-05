@@ -1,8 +1,8 @@
-const path = require('path');
+import path from 'path';
 
-const io = require('./lib/io');
-const Mysql = require('./lib/mysql');
-const { createData, createInitFunction } = require("./lib/expression");
+import io from './lib/io.js';
+import Mysql from './lib/mysql.js';
+import { createData, createInitFunction } from "./lib/expression.js";
 
 // 数据库连接配置
 const databaseJsonFilePath = "config/database.json";
@@ -23,10 +23,14 @@ const defaultPresetSetting = {
 async function main() {
   const args = process.argv.slice(2)
   if (args.length < 1) {
-    console.log('使用方法: node generate.js table_name');
+    console.log('使用方法: node generate.js table_name create_count');
     return;
   }
   const table = args[0];
+  let createCount = 20;
+  if (args.length > 1) {
+    createCount = parseInt(args[1])
+  }
 
   const [databaseConfig, dbConfigExist] = io.tryReadJSON(databaseJsonFilePath);
   let ok = true;
@@ -65,10 +69,12 @@ async function main() {
     io.writeJSON(tableConfigPath, configData);
   } else {
     const fieldNameList = fields.map(it => it.Field);
-    const data = createData(100, fieldNameList, configData);
+    console.log('表数据条数    :', await db.count(table));
+    console.log('生成的行数    :', createCount);
+    const data = createData(createCount, fieldNameList, configData);
     io.writeJSON("create.log", data, '');
     const updates = await db.batchInsert(table, fieldNameList, data);
-    console.log('插入的行数:', updates);
+    console.log('插入的行数    :', updates);
   }
   await db.close();
 }
