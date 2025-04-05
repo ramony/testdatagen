@@ -32,6 +32,8 @@ async function main() {
     createCount = parseInt(args[1])
   }
 
+  console.log(`表名          : ${table}`);
+
   const [databaseConfig, dbConfigExist] = io.tryReadJSON(databaseJsonFilePath);
   let ok = true;
   if (!dbConfigExist) {
