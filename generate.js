@@ -1,70 +1,76 @@
-const mysql = require('mysql2/promise');
-const fs = require('fs');
 const path = require('path');
-const vm = require('vm');
 
-const { DEFAULT_CONTEXT, createInitFunction } = require("./lib/expression");
+const io = require('./lib/io');
+const Mysql = require('./lib/mysql');
+const { createData, createInitFunction } = require("./lib/expression");
 
 // 数据库连接配置
-const config = {
+const databaseJsonFilePath = "config/database.json";
+const defaultDatabaseSetting = {
   host: 'localhost',
-  user: 'ramony',
-  password: '123456',
-  database: 'testdb',
-  port: '3306'
+  port: '3306',
+  user: 'your_user',
+  password: 'your_password',
+  database: 'your_database'
 };
 
-function createData(count, fieldNameList, configData) {
-  console.log('生成的行数:', count);
-  const result = [];
-  const context = { global: {} }
-  for (const key in DEFAULT_CONTEXT) {
-    context[key] = DEFAULT_CONTEXT[key].bind(context)
+// 预设字段规则配置
+const presetJsonFilePath = "config/preset.json";
+const defaultPresetSetting = {
+  id: 'null',
+};
+
+async function main() {
+  const args = process.argv.slice(2)
+  if (args.length < 1) {
+    console.log('使用方法: node generate.js table_name');
+    return;
   }
-  for (let i = 0; i < count; i++) {
-    var fieldValueList = [];
-    context.row = {}
-    for (const field of fieldNameList) {
-      context.field = field;
+  const table = args[0];
 
-      const expression = configData[field];
-      const script = new vm.Script(expression);
-      const value = script.runInNewContext(context);
-      fieldValueList.push(value);
-
-      context.row[field] = value;
-    }
-    result.push(fieldValueList);
+  const [databaseConfig, dbConfigExist] = io.tryReadJSON(databaseJsonFilePath);
+  let ok = true;
+  if (!dbConfigExist) {
+    io.writeJSON(databaseJsonFilePath, defaultDatabaseSetting);
+    console.log(`创建数据库配置文件${databaseJsonFilePath},请配置数据库信息`);
+    ok = false;
   }
-  return result;
-}
 
-async function insertData(connection, table, fieldNameList, data) {
-  const fieldString = fieldNameList.join(',')
-  let query = `INSERT IGNORE INTO ${table} (${fieldString}) VALUES ?`;
-  const [result] = await connection.query(query, [data]);
-  console.log('插入的行数:', result.affectedRows);
-}
+  const [presetConfig, presetConfigExist] = io.tryReadJSON(presetJsonFilePath);
+  if (!presetConfigExist) {
+    io.writeJSON(presetJsonFilePath, defaultPresetSetting);
+    console.log(`创建数据库预设字段配置文件${databaseJsonFilePath},请配置预设信息`);
+    ok = false;
+  }
+  if (!ok) {
+    return;
+  }
 
-async function main(table) {
-  const connection = await mysql.createConnection(config);
-  const [fields] = await connection.execute(`DESCRIBE ${table}`, [])
-  const tableConfigFile = path.join(__dirname, "config", table + '.json')
-  if (!fs.existsSync(tableConfigFile)) {
-    const configData = {};
+  const db = new Mysql(databaseConfig);
+  await db.connect();
+  const fields = await db.query(`DESCRIBE ${table}`, []);
+
+  const tableConfigPath = path.join("tableConfig", table + '.json')
+  let [configData, exist] = io.tryReadJSON(tableConfigPath)
+  if (!exist) {
+    configData = {};
     fields.map(f => {
-      configData[f.Field] = createInitFunction(f.Field, f.Type);
+      if (presetConfig[f.Field]) {
+        configData[f.Field] = presetConfig[f.Field];
+      } else {
+        configData[f.Field] = createInitFunction(f.Field, f.Type);
+      }
     })
-    fs.mkdirSync(path.join(__dirname, "config"), { recursive: true });
-    fs.writeFileSync(tableConfigFile, JSON.stringify(configData, '', '  '), 'utf8');
+    io.mkdir(path.dirname(tableConfigPath));
+    io.writeJSON(tableConfigPath, configData);
   } else {
-    let configData = JSON.parse(fs.readFileSync(tableConfigFile, 'utf8'));
     const fieldNameList = fields.map(it => it.Field);
     const data = createData(100, fieldNameList, configData);
-    // console.log(data)
-    await insertData(connection, table, fieldNameList, data);
+    io.writeJSON("create.log", data, '');
+    const updates = await db.batchInsert(table, fieldNameList, data);
+    console.log('插入的行数:', updates);
   }
-  await connection.end();
+  await db.close();
 }
 
-main('t_test_task_k1')
+main()
