@@ -1,63 +1,58 @@
 import path from 'path';
 
+import settings from './settings.js';
+
 import io from './lib/io.js';
 import Mysql from './lib/mysql.js';
 import { createData, createInitFunction } from "./lib/expression.js";
 
-// 数据库连接配置
-const databaseJsonFilePath = "config/database.json";
-const defaultDatabaseSetting = {
-  host: 'localhost',
-  port: '3306',
-  user: 'your_user',
-  password: 'your_password',
-  database: 'your_database'
-};
-
-// 预设字段规则配置
-const presetJsonFilePath = "config/preset.json";
-const defaultPresetSetting = {
-  id: 'null',
-};
 
 async function main() {
   const args = process.argv.slice(2)
   if (args.length < 1) {
-    console.log('使用方法: node generate.js table_name create_count');
+    console.log('使用方法: node generate.js taskname');
     return;
   }
-  const table = args[0];
-  let createCount = 20;
-  if (args.length > 1) {
-    createCount = parseInt(args[1])
+  io.mkdir("config")
+  const [taskConfig, taskConfigExist] = io.tryReadYAML(settings.taskFilePath, settings.defaultTaskSetting);
+  if (!taskConfigExist) {
+    console.log(`创建任务配置文件${settings.taskFilePath},请配置任务信息`);
   }
 
-  console.log(`表名          : ${table}`);
-
-  const [databaseConfig, dbConfigExist] = io.tryReadJSON(databaseJsonFilePath);
-  let ok = true;
+  const [dbConfigMap, dbConfigExist] = io.tryReadYAML(settings.databaseJsonFilePath, settings.defaultDatabaseSetting);
   if (!dbConfigExist) {
-    io.writeJSON(databaseJsonFilePath, defaultDatabaseSetting);
-    console.log(`创建数据库配置文件${databaseJsonFilePath},请配置数据库信息`);
-    ok = false;
+    console.log(`创建数据库配置文件${settings.databaseJsonFilePath},请配置数据库信息`);
   }
 
-  const [presetConfig, presetConfigExist] = io.tryReadJSON(presetJsonFilePath);
+  const [presetConfig, presetConfigExist] = io.tryReadYAML(settings.presetJsonFilePath, settings.defaultPresetSetting);
   if (!presetConfigExist) {
-    io.writeJSON(presetJsonFilePath, defaultPresetSetting);
-    console.log(`创建数据库预设字段配置文件${databaseJsonFilePath},请配置预设信息`);
-    ok = false;
+    console.log(`创建数据库预设字段配置文件${settings.databaseJsonFilePath},请配置预设信息`);
   }
-  if (!ok) {
+  if (!taskConfigExist || !dbConfigExist || !presetConfigExist) {
     return;
   }
 
-  const db = new Mysql(databaseConfig);
+  const taskName = args[0];
+  const task = taskConfig[taskName];
+  if (!task) {
+    console.log(`任务${taskName}不存在`);
+    return;
+  }
+
+  const dbConfig = dbConfigMap[task.database];
+  if (!dbConfig) {
+    console.log(`数据库定义${task.database}不存在`);
+    return;
+  }
+
+  const table = task.table;
+  console.log(`数据库表      : ${task.database} - ${table}`);
+  const db = new Mysql(dbConfig);
   await db.connect();
   const fields = await db.query(`DESCRIBE ${table}`, []);
 
-  const tableConfigPath = path.join("tableConfig", table + '.json')
-  let [configData, exist] = io.tryReadJSON(tableConfigPath)
+  const tableConfigPath = `config/table/${table}.yaml`
+  let [configData, exist] = io.tryReadYAML(tableConfigPath)
   if (!exist) {
     configData = {};
     fields.map(f => {
@@ -68,15 +63,16 @@ async function main() {
       }
     })
     io.mkdir(path.dirname(tableConfigPath));
-    io.writeJSON(tableConfigPath, configData);
+    io.writeYAML(tableConfigPath, configData);
   } else {
     const fieldNameList = fields.map(it => it.Field);
-    console.log('表数据条数    :', await db.count(table));
-    console.log('生成的行数    :', createCount);
-    const data = createData(createCount, fieldNameList, configData);
-    io.writeJSON("create.log", data, '');
+    console.log('当前数据条数  :', await db.count(table));
+    console.log('生成的行数    :', task.createCount);
+    const data = createData(task.createCount, fieldNameList, configData);
     const updates = await db.batchInsert(table, fieldNameList, data);
-    console.log('插入的行数    :', updates);
+    console.log('新增行数      :', updates);
+    console.log('结束数据条数  :', await db.count(table));
+
   }
   await db.close();
 }
