@@ -6,14 +6,13 @@ import io from './lib/io.js';
 import Mysql from './lib/mysql.js';
 import { createData, createInitFunction } from "./lib/expression.js";
 
-
 async function main() {
   const args = process.argv.slice(2)
   if (args.length < 1) {
     console.log('使用方法: node generate.js taskname');
     return;
   }
-  io.mkdir("config")
+  io.mkdir("config/table")
   const [taskConfig, taskConfigExist] = io.tryReadYAML(settings.taskFilePath, settings.defaultTaskSetting);
   if (!taskConfigExist) {
     console.log(`创建任务配置文件${settings.taskFilePath},请配置任务信息`);
@@ -32,7 +31,7 @@ async function main() {
     return;
   }
 
-  const taskName = args[0];
+  let [taskName, createCount] = args;
   const task = taskConfig[taskName];
   if (!task) {
     console.log(`任务${taskName}不存在`);
@@ -44,8 +43,12 @@ async function main() {
     console.log(`数据库定义${task.database}不存在`);
     return;
   }
+  if (!createCount) {
+    createCount = task.createCount;
+  }
 
   const table = task.table;
+  let t = new Date().getTime();
   console.log(`数据库表      : ${task.database} - ${table}`);
   const db = new Mysql(dbConfig);
   await db.connect();
@@ -56,23 +59,33 @@ async function main() {
   if (!exist) {
     configData = {};
     fields.map(f => {
-      if (presetConfig[f.Field]) {
+      if (presetConfig[f.Field] != undefined) {
         configData[f.Field] = presetConfig[f.Field];
       } else {
         configData[f.Field] = createInitFunction(f.Field, f.Type);
       }
     })
-    io.mkdir(path.dirname(tableConfigPath));
     io.writeYAML(tableConfigPath, configData);
   } else {
     const fieldNameList = fields.map(it => it.Field);
     console.log('当前数据条数  :', await db.count(table));
-    console.log('生成的行数    :', task.createCount);
-    const data = createData(task.createCount, fieldNameList, configData);
-    const updates = await db.batchInsert(table, fieldNameList, data);
+    console.log('生成的行数    :', createCount);
+    let updates = 0;
+    let insertId = -1;
+    while (createCount > 0) {
+      const data = createData(Math.min(createCount, settings.batchSize), fieldNameList, configData);
+      const result = await db.batchInsert(table, fieldNameList, data);
+      updates += result.affectedRows;
+      createCount -= settings.batchSize;
+      if (insertId < 0) {
+        insertId = result.insertId;
+      }
+    }
+    console.log('起始ID        :', insertId);
+
     console.log('新增行数      :', updates);
     console.log('结束数据条数  :', await db.count(table));
-
+    console.log('耗时          :', new Date().getTime() - t);
   }
   await db.close();
 }

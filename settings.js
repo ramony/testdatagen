@@ -1,5 +1,6 @@
 
 const settings = {
+  batchSize: 1000,
   taskFilePath: "config/task.yaml",
   defaultTaskSetting: {
     task1: {
