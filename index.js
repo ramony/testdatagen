@@ -1,18 +1,16 @@
-import path from 'path';
-
 import settings from './settings.js';
 
 import io from './lib/io.js';
+import { appDir, args } from './lib/process.js';
 import Mysql from './lib/mysql.js';
 import { createData, createInitFunction } from "./lib/expression.js";
 
 async function main() {
-  const args = process.argv.slice(2)
   if (args.length < 1) {
     console.log('使用方法: node generate.js taskname');
     return;
   }
-  io.mkdir("config/table")
+  io.mkdir(`config/table`)
   const [taskConfig, taskConfigExist] = io.tryReadYAML(settings.taskFilePath, settings.defaultTaskSetting);
   if (!taskConfigExist) {
     console.log(`创建任务配置文件${settings.taskFilePath},请配置任务信息`);
