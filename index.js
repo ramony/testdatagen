@@ -47,7 +47,9 @@ async function main() {
 
   const table = task.table;
   let t = new Date().getTime();
-  console.log(`数据库表      : ${task.database} - ${table}`);
+  const log = {}
+  log['数据库'] = task.database;
+  log['表名'] = table;
   const db = new Mysql(dbConfig);
   await db.connect();
   const fields = await db.query(`DESCRIBE ${table}`, []);
@@ -66,8 +68,8 @@ async function main() {
     io.writeYAML(tableConfigPath, configData);
   } else {
     const fieldNameList = fields.map(it => it.Field);
-    console.log('当前数据条数  :', await db.count(table));
-    console.log('生成的行数    :', createCount);
+    log['目标生成行数'] = createCount;
+    log['当前数据条数'] = await db.count(table);
     let updates = 0;
     let insertId = -1;
     while (createCount > 0) {
@@ -79,11 +81,10 @@ async function main() {
         insertId = result.insertId;
       }
     }
-    console.log('起始ID        :', insertId);
-
-    console.log('新增行数      :', updates);
-    console.log('结束数据条数  :', await db.count(table));
-    console.log('耗时          :', new Date().getTime() - t);
+    log['实际新增行数'] = updates;
+    log['起始ID'] = insertId;
+    log['耗时'] = new Date().getTime() - t;
+    console.table(log);
   }
   await db.close();
 }
